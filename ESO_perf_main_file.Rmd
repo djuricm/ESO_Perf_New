@@ -1,0 +1,264 @@
+---
+title: "Eso Perf File"
+author: "Milosh Djuric"
+date: "2025-01-06"
+output: html_document
+---
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(plotly)
+library(kableExtra)
+library(gtsummary)
+library(broom)
+library(corrplot)
+library(readxl)
+library(summarytools)
+library(gt)
+library(gtExtras)
+library(cluster)
+library(DBI)
+library(dplyr)
+library(ggplot2)
+library(rpart)
+library(tidyr)
+library(scales)
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(readxl)
+eso_perf_combined_data_with_fixed_dates_9_20_2024_2 <- read_excel("eso_perf_combined_data_with_fixed_dates_9.20.2024_2.xlsx")
+
+eso_perf = eso_perf_combined_data_with_fixed_dates_9_20_2024_2
+```
+
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+eso_perf_filtered = eso_perf %>%
+  filter(!AgeInYears <= 18,
+         Perf_location_code %in% c(2, 3),
+         Treatment_group %in% c(1, 2, 3))
+  
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+eso_perf_filtered <- eso_perf_filtered %>%
+  select(MRN, `Patient Race`, lengthofstay, Sex, AgeInYears, `30 Day Mortality`, 
+         DischargeDisposition, Ethnicity, SmokingStatus,
+         Char_Score, HO_CAD, HO_CHF, HO_COPD, HO_Dementia, HO_Diabetes, 
+         HO_GERD, HO_HTN, HO_MI, vasopressor_flag...203, 
+         Etiology_class, `Days from admit to enteral nutrition`, Treatment_group,
+         `Transfer from OSH?`, `Perf Location`, `Etiology of Perf`, `days from sx onset to presentation`,
+         Perf_class, Perf_location_code
+         )
+
+eso_perf_filtered <- eso_perf_filtered %>%
+  mutate(
+    AgeInYears = as.numeric(AgeInYears),
+    Char_Score = as.numeric(Char_Score),
+    vasopressor_flag...203 = as.numeric(as.character(vasopressor_flag...203)),
+    vasopressor_flag...203 = factor(vasopressor_flag...203, levels = c(0, 1))
+  )
+
+eso_perf_filtered <- eso_perf_filtered %>%
+  rename(vasopressor_flag = vasopressor_flag...203)
+
+eso_perf_filtered <- eso_perf_filtered %>%
+  mutate(
+    Char_Score_grouped = case_when(
+      Char_Score <= 2 ~ "Low (0-2)",
+      Char_Score <= 4 ~ "Moderate (3-4)",
+      Char_Score > 4 ~ "High (5+)",
+      TRUE ~ NA_character_
+    ),
+    Char_Score_grouped = factor(Char_Score_grouped, 
+                               levels = c("Low (0-2)", "Moderate (3-4)", "High (5+)"))
+  )
+
+eso_perf_filtered = eso_perf_filtered %>%
+  mutate(
+    Ethnicity = case_when(
+      Ethnicity == "Hispanic or Latino" ~ "Hispanic or Latino",
+      Ethnicity == "Not Hispanic/Latino" ~ "Not Hispanic/Latino",
+      TRUE ~ "Unknown"
+    )
+  )
+
+eso_perf_filtered = eso_perf_filtered%>%
+  mutate(
+    `Patient Race` = case_when(
+      `Patient Race` == "White" ~ "White",
+      `Patient Race` == "Other White" ~ "White",
+      `Patient Race` == "Do Not Know White" ~ "White",
+      `Patient Race` == "Black" ~ "Black",
+      `Patient Race` == "Black Do Not Know" ~ "Black",
+      TRUE ~ "Other"
+    )
+  )
+
+eso_perf_filtered = eso_perf_filtered %>%
+  mutate(
+    SmokingStatus = case_when(
+      SmokingStatus %in% c("Current Every Day Smoker", "Current Some Day Smoker", 
+                          "Every Day", "Heavy Smoker", "Light Tobacco Smoker") ~ "Smoker",
+      SmokingStatus %in% c("Former Smoker", "Former") ~ "Former Smoker",
+      SmokingStatus %in% c("Never", "Never Smoker") ~ "Non Smoker",
+      TRUE ~ "Unknown"
+    )
+  )
+```
+
+
+```{r}
+ggplot(eso_perf_filtered, aes(x = AgeInYears)) +
+  geom_histogram(fill = "steelblue", bins = 30) +
+  theme_minimal() +
+  labs(title = "Distribution of Patient Age",
+       x = "Age (Years)",
+       y = "Count")
+
+ggplot(eso_perf_filtered, aes(x = Sex, fill = Sex)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(title = "Distribution of Patient Sex",
+       x = "Sex",
+       y = "Count")
+
+```
+
+
+```{r results='asis', echo=FALSE}
+ggplot(eso_perf_filtered, aes(x = Ethnicity, fill = Ethnicity)) +
+  geom_bar() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribution of Patient Ethnicity",
+       x = "Ethnicity",
+       y = "Count")
+
+# 4. Length of Stay Distribution
+ggplot(eso_perf_filtered, aes(x = lengthofstay)) +
+  geom_histogram(fill = "steelblue", bins = 30) +
+  theme_minimal() +
+  labs(title = "Distribution of Length of Stay",
+       x = "Length of Stay (Days)",
+       y = "Count")
+
+# 5. Smoking Status
+ggplot(eso_perf_filtered, aes(x = SmokingStatus, fill = SmokingStatus)) +
+  geom_bar() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribution of Smoking Status",
+       x = "Smoking Status",
+       y = "Count")
+
+# 6. Treatment Group Distribution
+ggplot(eso_perf_filtered, aes(x = Treatment_group, fill = Treatment_group)) +
+  geom_bar() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Distribution of Treatment Groups",
+       x = "Treatment Group",
+       y = "Count")
+
+
+
+# 10. 30 Day Mortality
+ggplot(eso_perf_filtered, aes(x = `30 Day Mortality`, fill = `30 Day Mortality`)) +
+  geom_bar() +
+  theme_minimal() +
+  labs(title = "30 Day Mortality Distribution",
+       x = "30 Day Mortality",
+       y = "Count")
+
+# patient race
+ggplot(eso_perf_filtered, aes(y = `Patient Race`)) +
+  geom_bar(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Distribution of Patient Race",
+       x = "Count",
+       y = "Race") +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.y = element_text(size = 10)
+  )
+```
+
+
+
+```{r results='asis', echo=FALSE}
+tbl_summary_survivors <- eso_perf_filtered %>%
+  filter(Treatment_group %in% c(1, 2), `30 Day Mortality` == 0) %>%  
+  select(lengthofstay, Treatment_group, Sex, 
+         AgeInYears, vasopressor_flag, Char_Score_grouped) %>%
+  tbl_summary(
+    by = Treatment_group,
+    missing = "no",
+    percent = "row"
+  ) %>%
+  add_p() %>%
+  add_overall() %>%
+  modify_header(label = "**Variable**") %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Treatment Class**")
+
+print(tbl_summary_survivors)
+```
+
+
+<br><br><br><br><br><br>
+
+
+```{r}
+tbl_summary_survivors_2_3 <- eso_perf_filtered %>%
+  filter(Treatment_group %in% c(2, 3), `30 Day Mortality` == 0) %>%  
+  select(lengthofstay, Treatment_group, Sex, 
+         AgeInYears, vasopressor_flag, Char_Score_grouped) %>%
+  tbl_summary(
+    by = Treatment_group,
+    missing = "no",
+    percent = "row"
+  ) %>%
+  add_p() %>%
+  add_overall() %>%
+  modify_header(label = "**Variable**") %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Treatment Class**")
+
+print(tbl_summary_survivors_2_3)
+```
+
+
+
+
+
+```{r results='asis', echo=FALSE}
+eso_perf_filtered <- eso_perf_filtered %>%
+  filter(!is.null(Perf_class) & Perf_class != "NULL") %>%
+  mutate(Perf_class = factor(Perf_class, 
+                            levels = c("1", "2", "3"),
+                            ordered = TRUE))
+
+
+tbl_summary <- eso_perf_filtered %>%
+  select(lengthofstay, Treatment_group, Sex, AgeInYears, vasopressor_flag, Char_Score_grouped, Perf_class
+         ) %>%
+  tbl_summary(
+    by = Perf_class,
+    missing = "no",
+    percent = "row"
+  ) %>%
+  add_p() %>%
+  add_overall() %>%
+  modify_header(label = "**Variable**") %>%
+  modify_spanning_header(c("stat_1", "stat_2") ~ "**Perf Class**")
+
+print(tbl_summary)
+```
+
