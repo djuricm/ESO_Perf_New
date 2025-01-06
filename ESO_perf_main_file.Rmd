@@ -30,8 +30,6 @@ library(scales)
 
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-library(readxl)
-eso_perf_combined_data_with_fixed_dates_9_20_2024_2 <- read_excel("eso_perf_combined_data_with_fixed_dates_9.20.2024_2.xlsx")
 
 eso_perf = eso_perf_combined_data_with_fixed_dates_9_20_2024_2
 ```
